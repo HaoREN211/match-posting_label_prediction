@@ -17,3 +17,4 @@ _book
 
 .idea/*
 Data/*
+Model/model_fast_text.model
