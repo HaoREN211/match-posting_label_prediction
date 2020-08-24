@@ -39,6 +39,9 @@ if __name__ == '__main__':
     # 0.8963417982056024
     tfidf = TfidfVectorizer(ngram_range=(1, 3), max_features=3000, norm="l2", min_df=1, max_df=0.8)
 
+    # 0.9052568996960401
+    tfidf = TfidfVectorizer(ngram_range=(1, 2), max_features=4000, norm="l2", min_df=1, max_df=0.8)
+
     df_all_text = data_train[["text"]].copy()
     df_all_text = df_all_text.append(data_test[["text"]])
 
