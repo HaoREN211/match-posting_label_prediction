@@ -16,6 +16,7 @@ import datetime as dt
 from sklearn.linear_model import RidgeClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold
+from copy import copy
 
 # 对于每一篇文章，获取文章的每一个分词在word2vec模型的相关性向量。
 # 然后把一篇文章的所有分词在word2vec模型中的相关性向量求和取平均数，即此篇文章在word2vec模型中的相关性向量。
@@ -34,14 +35,13 @@ def convert_array_to_string(list_array):
 
 if __name__ == '__main__':
     # 20200821 尝试自己搭建word2vec模型
-    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(levelname)s: %(message)s')
     model_path = "Model/model_word2vec.pickle"
     vector_train_file, vector_test_file = "Data/Word2Vec/train.csv", "Data/Word2Vec/test.csv"
     train_data = pd.read_csv('Data/train_set.csv', sep='\t', encoding='UTF-8')
     test_data = pd.read_csv('Data/test_set.csv', sep='\t', encoding='UTF-8')
 
     # word2vec训练模型
-    num_features = 100  # Word vector dimensionality
+    num_features = 20  # Word vector dimensionality
     num_workers = 8  # Number of threads to run in parallel
 
     # 提取text部分
@@ -78,11 +78,13 @@ if __name__ == '__main__':
         })
 
         # 将Word2Vec得到的num_features向量进行OneHot编码，向量中的一个元素成为编码中的一个特征(1列)
+        logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(levelname)s: %(message)s')
         current_time = dt.datetime.now()
+        train_vector, test_vector = copy(df_train_vector), copy(df_test_vector)
         for i in range(num_features):
-            print("--- 当前第"+str(i)+"步，耗时"+str((dt.datetime.now()-current_time).seconds)+"秒。")
-            df_test_vector["c_" + str(i+1)] = df_test_vector.apply(lambda x: x["vector"][i], axis=1)
-            df_train_vector["c_" + str(i + 1)] = df_train_vector.apply(lambda x: x["vector"][i], axis=1)
+            logging.info("--- 当前第"+str(i)+"步，耗时"+str((dt.datetime.now()-current_time).seconds)+"秒。")
+            train_vector["c_" + str(i+1)] = train_vector.apply(lambda x: x["vector"][i], axis=1)
+            test_vector["c_" + str(i + 1)] = test_vector.apply(lambda x: x["vector"][i], axis=1)
         # 删除向量列
         df_train_vector.drop(columns=["vector"], inplace=True)
         df_test_vector.drop(columns=["vector"], inplace=True)
@@ -99,13 +101,14 @@ if __name__ == '__main__':
     folder = KFold(n_splits=n_validation, shuffle=True, random_state=0)
     df_validation = pd.DataFrame(columns=["label", "predict"])
     current_time = dt.datetime.now()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(levelname)s: %(message)s')
     for train_index, val_index in folder.split(df_train_vector):
-        print("--- 当前完成" + str(round(current_validation/n_validation, 2)) + "，耗时" + str((dt.datetime.now() - current_time).seconds) + "秒。")
-        c_train_data, c_val_data = df_train_vector.loc[train_index, :], df_train_vector.loc[val_index, :]
-        clf.fit(c_train_data[df_test_vector.columns], c_train_data["label"].values)
+        logging.info("--- 当前完成" + str(round(current_validation/n_validation, 2)) + "，耗时" + str((dt.datetime.now() - current_time).seconds) + "秒。")
+        clf.fit([x for x in df_train_vector.loc[train_index, "vector"]],
+                list(df_train_vector["label"][train_index]))
         df_validation = df_validation.append(pd.DataFrame({
-            "label": c_val_data["label"].values,
-            "predict": clf.predict(c_val_data[df_test_vector.columns])
+            "label": list(df_train_vector["label"][val_index]),
+            "predict": clf.predict([x for x in df_train_vector.loc[val_index, "vector"]])
         }))
         current_validation += 1
     print("---模型准确率："+str(f1_score(list(df_validation["label"].values), list(df_validation["predict"].values), average="macro")))

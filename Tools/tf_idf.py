@@ -1,4 +1,4 @@
-# -*- coding: UTF-8 -*- 
+# -*- coding: UTF-8 -*-
 # 作者：hao.ren3
 # 时间：2020/8/20 11:20
 # IDE：PyCharm
@@ -10,6 +10,8 @@ from sklearn.metrics import f1_score
 from sklearn.model_selection import KFold
 from sklearn.linear_model import RidgeClassifier
 import pandas as pd
+import logging
+import datetime as dt
 
 # ngram_range 同词袋模型
 # 将 text 分成 n1,n1+1,……,n2个不同的词组。
@@ -130,3 +132,49 @@ def verify_tf_idf_model_by_f1(data_train, column, ngram_min, ngram_max, min_df, 
             "predict": clf.predict(c_test_data)
         }))
     return f1_score(list(result["label"].values), list(result["predict"].values), average='macro'), result.reset_index(drop=True)
+
+
+# 验证模型的好坏程度
+def verify_model_accuracy(inside_data, classifier, labels, inside_n_splits):
+    i_validation = 1
+    i_folder = KFold(n_splits=inside_n_splits, shuffle=True, random_state=0)
+    i_df_validation = pd.DataFrame(columns=["label", "predict"])
+    i_current_time = dt.datetime.now()
+    logging.info("正在验证模型的准确程度")
+    for i_train_index, i_val_index in i_folder.split(inside_data):
+        logging.info("--- 当前完成" + str(round(i_validation / inside_n_splits, 2)) + "，耗时" + str(
+            (dt.datetime.now() - i_current_time).seconds) + "秒。")
+        i_train_data, i_val_data = inside_data[i_train_index], inside_data[i_val_index]
+        classifier.fit(i_train_data, labels[i_train_index])
+        i_df_validation = i_df_validation.append(pd.DataFrame({
+            "label": labels[i_val_index],
+            "predict": classifier.predict(i_val_data)
+        }))
+        i_validation += 1
+    i_f1_score = f1_score(list(i_df_validation["label"].values), list(i_df_validation["predict"].values), average="macro")
+    return i_f1_score
+
+
+# 计算当前模型分词的好坏程度
+def calculate_score_and_predict(inside_data, model, labels, text_column="text", nb_train_sample=200000,
+                    inside_n_splits=10, classifier=RidgeClassifier()):
+    # 设置日志打印的格式
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(levelname)s: %(message)s')
+
+    # 将数据进行tf-idf的转化
+    logging.info("正在进行tf-idf分词")
+    inside_transformed_data = model.fit_transform(inside_data[text_column])
+    inside_vector_train = inside_transformed_data[:nb_train_sample]
+    inside_vector_test = inside_transformed_data[nb_train_sample:]
+
+    # 验证模型的好坏程度
+    i_f1_score = verify_model_accuracy(inside_vector_train, classifier, labels, inside_n_splits)
+    logging.info("模型准确率：" + str(i_f1_score))
+
+    # 预测
+    logging.info("开始预测测试集的类别")
+    classifier.fit(inside_vector_train, labels)
+    i_test_label_predict = classifier.predict(inside_vector_test)
+
+    logging.basicConfig(level=logging.WARNING)
+    return i_f1_score, i_test_label_predict

@@ -7,6 +7,23 @@ from Tools.data import get_test_data, get_train_data
 import pandas as pd
 import os
 import numpy as np
+import logging
+import datetime as dt
+from copy import copy
+
+# 计算基尼系数
+def calculate_gini(x):
+    i_result = 1
+    for i_i in range(14):
+        i_result -= pow(x["type_"+str(i_i)+"_ratio"], 2)
+    return round(i_result, 3)
+
+
+# 每篇文章出现的基尼系数最低的基尼系数的值
+def calculate_posting_lower_gini(posting_text, word_gini_list):
+    i_list_word = [int(x) for x in posting_text.split()]
+    i_list_gini = [word_gini_list.loc[x, "gini"] for x in i_list_word]
+    return min(i_list_gini)
 
 if __name__ == '__main__':
     # 获取训练集数据，测试集数据
@@ -56,3 +73,46 @@ if __name__ == '__main__':
 
     df_word_type_cnt = word_type_cnt.reset_index()
     df_word_type_cnt.to_csv("word_type_cnt.csv", index=False, encoding="utf_8_sig")
+
+    # 统计各类单词在各种类帖子中出现的比例
+    # 统计各类单词在各种类帖子中出现的次数
+    df_word_type_cnt = pd.read_excel("Statistics/单词在各类型帖子出现的次数.xlsx", sheet_name=0)
+    # 统计各类帖子的帖子数
+    df_type_cnt = pd.read_excel("Statistics/单词在各类型帖子出现的次数.xlsx", sheet_name=1).set_index("label")
+    df_word_type_ratio = pd.DataFrame({"word": df_word_type_cnt["word"].values})
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(levelname)s: %(message)s')
+    current_time = dt.datetime.now()
+    for current_type in range(14):
+        df_word_type_ratio["type_"+str(current_type)+"_type"] = df_word_type_cnt.apply(
+            lambda x: round(x["type_"+str(current_type)]/df_type_cnt.loc[current_type, "posting_cnt"], 3), axis=1)
+        logging.info("--- 当前完成" + str(round(current_type+1 / 13, 2)) + "，耗时" + str(
+            (dt.datetime.now() - current_time).seconds) + "秒。")
+    df_word_type_ratio.to_excel("Statistics/ratio.xlsx", index=None)
+
+    # 统计各单词在各类帖子中出现的占比
+    df_word_type_cnt = pd.read_excel("Statistics/单词在各类型帖子出现的次数.xlsx", sheet_name=0)
+    df_word_type_cnt["all_cnt"] = df_word_type_cnt.apply(lambda x: x.sum()-x["word"], axis=1)
+    df_word_type_ratio = pd.DataFrame({"word": df_word_type_cnt["word"].values})
+    for current_type in range(14):
+        df_word_type_ratio["type_" + str(current_type) + "_ratio"] = df_word_type_cnt.apply(
+            lambda x: round(x["type_"+str(current_type)]/x["all_cnt"], 3) if x["all_cnt"] > 0 else 0, axis=1)
+        logging.info("--- 当前完成" + str(round((current_type + 1) / 14, 2)) + "，耗时" + str(
+            (dt.datetime.now() - current_time).seconds) + "秒。")
+    df_word_type_ratio["gini"] = df_word_type_ratio.apply(lambda x: calculate_gini(x), axis=1)
+    df_word_type_ratio.to_excel("Statistics/ratio.xlsx", index=None)
+    word_gini = df_word_type_ratio[["word", "gini"]].set_index("word").copy()
+
+    # 每篇文章出现的基尼系数最低的基尼系数的值
+    df_word_type_ratio = pd.read_excel("Statistics/单词在各类型帖子出现的次数.xlsx", sheet_name=2)
+    word_gini = df_word_type_ratio[["word", "gini"]].copy()
+
+    len(word_gini)
+
+
+    temp_data_train = copy(data_train)
+    temp_data_train["lower_gini"] = temp_data_train.apply(lambda x: calculate_posting_lower_gini(x["text"], word_gini), axis=1)
+    # 最大值为0.858
+    max(temp_data_train["lower_gini"].values)
+
+    len(word_gini[word_gini["gini"]>0.858])
