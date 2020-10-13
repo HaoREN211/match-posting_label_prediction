@@ -75,6 +75,7 @@ if __name__ == '__main__':
                       early_stopping_rounds=5, stratified=True, seed=1000)
 
     clf.fit(df_all_text_vectored[:len(data_train)], data_train["label"].values)
+    prediction = pd.DataFrame({"label": clf.predict(df_all_text_vectored[len(data_train):])})
 
     prediction = pd.DataFrame({"label": test_label_predict})
     prediction.to_csv("submit_tf_idf.csv", index=False, encoding="utf_8_sig")
